@@ -1,0 +1,85 @@
+heat_template_version: 2013-05-23
+
+description: >
+  HOT template to create a new neutron network plus a router to the public
+  network, and for deploying two servers into the new network. The template also
+  assigns floating IP addresses to each server so they are routable from the
+  public network.
+
+parameters:
+  key_name:
+    type: string
+    description: Name of keypair to assign to servers
+    default: edx
+  image:
+    type: string
+    description: Name of image to use for servers
+    default: ubuntu-14.04-amd64
+  flavor:
+    type: string
+    description: Flavor to use
+    default: m1.tiny
+  public_net:
+    type: string
+    description: >
+      ID or name of public network for which floating IP addresses will be allocated
+    default: public
+  public_network_id:
+    type: string
+    description: >
+      ID or name of public network id for which floating IP addresses will be allocated
+    default: 86139c23-b2e3-428d-8a9a-7eb56b5085a1
+  private_net_name:
+    type: string
+    description: Name of private network to be created
+    default: test-neutron-priv
+  private_net_cidr:
+    type: string
+    description: Private network address (CIDR notation)
+    default: 192.168.101.0/24
+  private_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: 192.168.101.1
+  private_net_pool_start:
+    type: string
+    description: Start of private network IP address allocation pool
+    default: 192.168.101.2
+  private_net_pool_end:
+    type: string
+    description: End of private network IP address allocation pool
+    default: 192.168.101.10
+
+resources:
+  private_net:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: private_net_name }
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private_net }
+      cidr: { get_param: private_net_cidr }
+      gateway_ip: { get_param: private_net_gateway }
+      allocation_pools:
+        - start: { get_param: private_net_pool_start }
+          end: { get_param: private_net_pool_end }
+
+  lms:
+    type: OS::Heat::ResourceGroup
+    depends_on: private_subnet
+    properties:
+       count: 2
+       resource_def:
+          type: OS::Nova::Server
+          properties:
+            name: Server1
+            image: { get_param: image }
+            flavor: { get_param: flavor }
+            key_name: { get_param: key_name }
+            networks:
+              - network: {get_resource: private_net }
+
+
+

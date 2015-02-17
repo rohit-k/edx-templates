@@ -1,0 +1,229 @@
+heat_template_version: 2013-05-23
+
+description: >
+  HOT template to create a new neutron network plus a router to the public
+  network, and for deploying two servers into the new network. The template also
+  assigns floating IP addresses to each server so they are routable from the
+  public network.
+
+parameters:
+  key_name:
+    type: string
+    description: Name of keypair to assign to servers
+    default: edx
+  image:
+    type: string
+    description: Name of image to use for servers
+    default: ubuntu-14.04-amd64
+  flavor:
+    type: string
+    description: Flavor to use
+    default: m1.tiny
+  public_net:
+    type: string
+    description: >
+      ID or name of public network for which floating IP addresses will be allocated
+    default: public
+  public_network_id:
+    type: string
+    description: >
+      ID or name of public network id for which floating IP addresses will be allocated
+    default: 86139c23-b2e3-428d-8a9a-7eb56b5085a1
+  private_net_name:
+    type: string
+    description: Name of private network to be created
+    default: test-neutron-priv
+  private_net_cidr:
+    type: string
+    description: Private network address (CIDR notation)
+    default: 192.168.101.0/24
+  private_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: 192.168.101.1
+  private_net_pool_start:
+    type: string
+    description: Start of private network IP address allocation pool
+    default: 192.168.101.2
+  private_net_pool_end:
+    type: string
+    description: End of private network IP address allocation pool
+    default: 192.168.101.10
+  private2_net_name:
+    type: string
+    description: Name of private network to be created
+    default: test-neutron-priv
+  private2_net_cidr:
+    type: string
+    description: Private network address (CIDR notation)
+    default: 192.168.102.0/24
+  private2_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: 192.168.102.1
+  private2_net_pool_start:
+    type: string
+    description: Start of private network IP address allocation pool
+    default: 192.168.102.2
+  private2_net_pool_end:
+    type: string
+    description: End of private network IP address allocation pool
+    default: 192.168.102.10
+
+
+resources:
+  private_net:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: private_net_name }
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private_net }
+      cidr: { get_param: private_net_cidr }
+      gateway_ip: { get_param: private_net_gateway }
+      allocation_pools:
+        - start: { get_param: private_net_pool_start }
+          end: { get_param: private_net_pool_end }
+
+  private2_net:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: private_net_name }
+
+  private2_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private2_net }
+      cidr: { get_param: private2_net_cidr }
+      gateway_ip: { get_param: private2_net_gateway }
+      allocation_pools:
+        - start: { get_param: private2_net_pool_start }
+          end: { get_param: private2_net_pool_end }
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: public_net }
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: private_subnet }
+
+  server1:
+    type: OS::Nova::Server
+    properties:
+      name: Server1
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+      networks:
+        - port: { get_resource: server1_port }
+        - port: { get_resource: server1_port2 }
+
+  server1_port2:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_resource: private2_net }
+      fixed_ips:
+        - subnet_id: { get_resource: private2_subnet }
+
+  server1_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_resource: private_net }
+      fixed_ips:
+        - subnet_id: { get_resource: private_subnet }
+
+  server1_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_net }
+      port_id: { get_resource: server1_port }
+
+  server2:
+    type: OS::Nova::Server
+    properties:
+      name: Server2
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+      networks:
+        - port: { get_resource: server2_port }
+
+  server2_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_resource: private_net }
+      fixed_ips:
+        - subnet_id: { get_resource: private_subnet }
+
+  server2_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_net }
+      port_id: { get_resource: server2_port }
+
+  monitor:
+    type: OS::Neutron::HealthMonitor
+    properties:
+      type: TCP
+      delay: 5
+      max_retries: 5
+      timeout: 5
+
+  pool:
+    type: OS::Neutron::Pool
+    properties:
+      protocol: HTTP
+      monitors: [{get_resource: monitor}]
+      subnet_id: {get_resource: private_subnet}
+      lb_method: ROUND_ROBIN
+      vip:
+        protocol_port: 80
+  lb:
+    type: OS::Neutron::LoadBalancer
+    properties:
+      protocol_port: 80
+      pool_id: {get_resource: pool}
+
+  lb_floating:
+    type: "OS::Neutron::FloatingIP"
+    properties:
+      floating_network_id: {get_param: public_network_id}
+      port_id: {get_attr: [pool, vip, port_id]}
+
+  member1:
+    type: OS::Neutron::PoolMember
+    properties:
+      pool_id: {get_resource: pool}
+      address: {get_attr: [server1, first_address]}
+      protocol_port: 80
+
+  member2:
+    type: OS::Neutron::PoolMember
+    properties:
+      pool_id: {get_resource: pool}
+      address: {get_attr: [server2, first_address]}
+      protocol_port: 80
+
+
+
+outputs:
+  server1_private_ip:
+    description: IP address of server1 in private network
+    value: { get_attr: [ server1, first_address ] }
+  server1_public_ip:
+    description: Floating IP address of server1 in public network
+    value: { get_attr: [ server1_floating_ip, floating_ip_address ] }
+  server2_private_ip:
+    description: IP address of server2 in private network
+    value: { get_attr: [ server2, first_address ] }
+  server2_public_ip:
+    description: Floating IP address of server2 in public network
+    value: { get_attr: [ server2_floating_ip, floating_ip_address ] }
+

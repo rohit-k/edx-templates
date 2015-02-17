@@ -1,0 +1,629 @@
+heat_template_version: 2013-05-23
+
+description: >
+  HOT template to create EDX cluster
+
+parameters:
+  key_name:
+    type: string
+    description: Name of keypair to assign to servers
+    default: edx
+  image:
+    type: string
+    description: Name of image to use for servers
+    default: ubuntu-14.04-amd64
+  medium:
+    type: string
+    description: Flavor to use
+    default: m1.tiny
+  large:
+    type: string
+    description: Flavor to use
+    default: m1.small
+  volume_size_mysql:
+    type: string
+    description: volume size required for mysql
+    default: 1
+  volume_size_mongodb:
+    type: string
+    description: volume size required for mysql
+    default: 1       
+  public_net:
+    type: string
+    description: >
+      ID or name of public network for which floating IP addresses will be allocated
+    default: public
+  public_network_id:
+    type: string
+    description: >
+      ID or name of public network id for which floating IP addresses will be allocated
+    default: 86139c23-b2e3-428d-8a9a-7eb56b5085a1
+  private1_net_name:
+    type: string
+    description: Name of private network to be created
+    default: edx-priv1
+  private1_net_cidr:
+    type: string
+    description: Private network address (CIDR notation)
+    default: 192.168.100.0/24
+  private1_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: 192.168.100.1
+  private1_net_pool_start:
+    type: string
+    description: Start of private network IP address allocation pool
+    default: 192.168.100.2
+  private1_net_pool_end:
+    type: string
+    description: End of private network IP address allocation pool
+    default: 192.168.100.254
+  private2_net_name:
+    type: string
+    description: Name of private network to be created
+    default: edx-priv2
+  private2_net_cidr:
+    type: string
+    description: Private network address (CIDR notation)
+    default: 192.168.200.0/24
+  private2_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: 192.168.200.1
+  private2_net_pool_start:
+    type: string
+    description: Start of private network IP address allocation pool
+    default: 192.168.200.2
+  private2_net_pool_end:
+    type: string
+    description: End of private network IP address allocation pool
+    default: 192.168.200.254
+
+
+resources:
+
+  private1_net:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: private1_net_name }
+
+  private1_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private1_net }
+      cidr: { get_param: private1_net_cidr }
+      gateway_ip: { get_param: private1_net_gateway }
+      allocation_pools:
+        - start: { get_param: private1_net_pool_start }
+          end: { get_param: private1_net_pool_end }
+
+  secgroup_lb-fe:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: LB-FE
+      description: Access rules for Frontend Load Balancers or Reverse Proxy
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: icmp
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: udp
+          port_range_min: 53
+          port_range_max: 53
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 53
+          port_range_max: 53
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 18060
+          port_range_max: 18060
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 18040
+          port_range_max: 18040
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 18080
+          port_range_max: 18080
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 18010
+          port_range_max: 18010
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 53
+          port_range_max: 53
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: udp
+          port_range_min: 53
+          port_range_max: 53
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: udp
+          port_range_min: 53
+          port_range_max: 53
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 53
+          port_range_max: 53
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: udp
+          port_range_min: 53
+          port_range_max: 53
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 53
+          port_range_max: 53
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 53
+          port_range_max: 53
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: udp
+          port_range_min: 53
+          port_range_max: 53
+
+
+  secgroup_frontend:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: Frontend
+      description: Access rules for Web servers
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: icmp
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 8000
+          port_range_max: 8000
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 8010
+          port_range_max: 8010
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 18010  
+          port_range_max: 18010
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 8060
+          port_range_max: 8060
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 25
+          port_range_max: 25
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 8040
+          port_range_max: 8040
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 8000
+          port_range_max: 8000
+
+  public_router:
+    type: OS::Neutron::Router
+    properties:
+      admin_state_up: true
+      name: public_router
+
+  router_gateway:
+    type: OS::Neutron::RouterGateway
+    properties:
+      network_id: { get_param: public_network_id }
+      router_id: { get_resource: public_router }
+
+  router_interface_0:
+    type: OS::Neutron::RouterInterface
+    depends_on: [ private1_subnet ]
+    properties:
+      router_id:
+        get_resource: public_router
+      subnet_id:
+        get_resource: private1_subnet
+
+  floating_ip_nginx:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: { get_param: public_network_id}
+
+  floating_ip_nginx_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip_nginx }
+      port_id: {get_attr: [ext_lb, addresses, {get_param: private1_net_name}, 0, port]}
+
+  floating_ip_ns0:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: { get_param: public_network_id}
+
+  floating_ip_ns0_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip_ns0 }
+      port_id: {get_attr: [dns-proxy, addresses, {get_param: private1_net_name}, 0, port]}
+
+  floating_ip_jumphost:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: { get_param: public_network_id}
+
+  floating_ip_jumphost_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip_jumphost }
+      port_id: {get_attr: [jumphost, addresses, {get_param: private1_net_name}, 0, port]}
+
+  ext_lb:
+    type: OS::Nova::Server
+    depends_on: [private1_net,secgroup_lb-fe]
+    properties:
+      name: NGINX
+      image: { get_param: image }
+      flavor: { get_param: medium }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup_lb-fe }]
+      networks:
+        - network: {get_resource: private1_net }
+
+  lms:
+    type: OS::Heat::ResourceGroup
+    depends_on: [private1_subnet,secgroup_frontend]
+    properties:
+       count: 3
+       resource_def:
+          type: OS::Nova::Server
+          properties:
+            name: LMS%index%
+            image: { get_param: image }
+            flavor: { get_param: large }
+            key_name: { get_param: key_name }
+            security_groups: [{ get_resource: secgroup_frontend }]
+            networks:
+              - network: {get_resource: private1_net }
+
+  cms:
+    type: OS::Heat::ResourceGroup
+    depends_on: [private1_subnet,secgroup_frontend]
+    properties:
+       count: 3
+       resource_def:
+          type: OS::Nova::Server
+          properties:
+            name: CMS%index%
+            image: { get_param: image }
+            flavor: { get_param: large }
+            key_name: { get_param: key_name }
+            security_groups: [{ get_resource: secgroup_frontend }]
+            networks:
+              - network: {get_resource: private1_net }
+
+  workers:
+    type: OS::Nova::Server
+    depends_on: [private1_subnet,secgroup_frontend]
+    properties:
+      name: Workers
+      image: { get_param: image }
+      flavor: { get_param: large }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup_frontend }]
+      networks:
+        - network: {get_resource: private1_net }
+
+  forums:
+    type: OS::Nova::Server
+    depends_on: [private1_subnet,secgroup_frontend]
+    properties:
+      name: Forums
+      image: { get_param: image }
+      flavor: { get_param: medium }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup_frontend }]
+      networks:
+        - network: {get_resource: private1_net }
+
+  xq-ora:
+    type: OS::Nova::Server
+    depends_on: [private1_subnet,secgroup_frontend]
+    properties:
+      name: Xqueue-ORA
+      image: { get_param: image }
+      flavor: { get_param: medium }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup_frontend }]
+      networks:
+        - network: {get_resource: private1_net }
+
+
+
+
+
+
+
+
+  private2_net:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: private2_net_name }
+
+  private2_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private2_net }
+      cidr: { get_param: private2_net_cidr }
+      gateway_ip: { get_param: private2_net_gateway }
+      allocation_pools:
+        - start: { get_param: private2_net_pool_start }
+          end: { get_param: private2_net_pool_end }
+
+  secgroup_lb-be:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: LB-BE
+      description: Access rules for Backend Load Balancers
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: icmp
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 5672
+          port_range_max: 5672
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 8080
+          port_range_max: 8080
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 3306
+          port_range_max: 3306
+
+
+  secgroup_backend:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: Backend
+      description: Access rules for Backend servers
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: icmp
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 5672
+          port_range_max: 5672
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 8080
+          port_range_max: 8080
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 3306
+          port_range_max: 3306
+
+
+  secgroup_db:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: DB
+      description: Access rules for Database Servers
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: icmp
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 3306
+          port_range_max: 3306
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 4567
+          port_range_max: 4567
+
+  lb_backend:
+    type: OS::Heat::ResourceGroup
+    depends_on: [private2_subnet,secgroup_lb-be]
+    properties:
+       count: 2
+       resource_def:
+          type: OS::Nova::Server
+          properties:
+            name: HAProxy%index%
+            image: { get_param: image }
+            flavor: { get_param: medium }
+            key_name: { get_param: key_name }
+            security_groups: [{ get_resource: secgroup_lb-be }]
+            networks:
+              - network: {get_resource: private2_net }
+
+  mysql:
+    type: OS::Heat::ResourceGroup
+    depends_on: [private2_subnet,secgroup_backend,secgroup_db]
+    properties:
+       count: 3
+       resource_def:
+          type: mysql.yaml
+          properties:
+            name: Galera%index%
+            image: { get_param: image }
+            flavor: { get_param: large }
+            key_name: { get_param: key_name }
+            security_group1: { get_resource: secgroup_backend }
+            security_group2: { get_resource: secgroup_db }
+            network: { get_resource: private2_net }
+            volume_size: { get_param: volume_size_mysql }
+
+  mongodb:
+    type: OS::Heat::ResourceGroup
+    depends_on: [private2_subnet,secgroup_backend,secgroup_db]
+    properties:
+       count: 3
+       resource_def:
+          type: mongodb.yaml
+          properties:
+            name: Mongo%index%
+            image: { get_param: image }
+            flavor: { get_param: large }
+            key_name: { get_param: key_name }
+            security_group1: { get_resource: secgroup_backend }
+            security_group2: { get_resource: secgroup_db }
+            network: { get_resource: private2_net }
+            volume_size: { get_param: volume_size_mongodb }
+
+  rabbitmq:
+    type: OS::Heat::ResourceGroup
+    depends_on: [private2_subnet,secgroup_backend]
+    properties:
+       count: 2
+       resource_def:
+          type: OS::Nova::Server
+          properties:
+            name: Rabbit%index%
+            image: { get_param: image }
+            flavor: { get_param: large }
+            key_name: { get_param: key_name }
+            security_groups: [{ get_resource: secgroup_backend }]
+            networks:
+              - network: {get_resource: private2_net }
+
+
+  log_server:
+    type: OS::Nova::Server
+    depends_on: [private2_subnet,secgroup_backend]
+    properties:
+      name: ELK
+      image: { get_param: image }
+      flavor: { get_param: medium }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup_backend }]
+      networks:
+        - network: {get_resource: private2_net }
+
+
+  memcached:
+    type: OS::Nova::Server
+    depends_on: [private2_subnet,secgroup_backend]
+    properties:
+      name: Memcached
+      image: { get_param: image }
+      flavor: { get_param: medium }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup_backend }]
+      networks:
+        - network: {get_resource: private2_net }
+
+
+
+
+  dns-proxy:
+    type: OS::Nova::Server
+    depends_on: [private1_subnet,private2_subnet,secgroup_lb-fe]
+    properties:
+      name: NS0
+      image: { get_param: image }
+      flavor: { get_param: medium }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup_lb-fe }]
+      networks:
+        - network: {get_resource: private1_net }
+        - network: {get_resource: private2_net }
+
+  secgroup_jumphost:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: Jumphosts
+      description: Access rules for Jump hosts
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: icmp
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+
+  jumphost:
+    type: OS::Nova::Server
+    depends_on: [private1_subnet,secgroup_jumphost]
+    properties:
+      name: Bastion
+      image: { get_param: image }
+      flavor: { get_param: medium }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup_jumphost }]
+      networks:
+        - network: {get_resource: private1_net }
+
+

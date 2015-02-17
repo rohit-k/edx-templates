@@ -1,0 +1,164 @@
+heat_template_version: 2013-05-23
+description: >
+  HOT template to create vpc1
+
+parameters:
+  name:
+    type: string
+    description: Name of this resource group
+    default: vpc1
+  key_name:
+    type: string
+    description: Name of keypair to assign to servers
+    default: edx
+  image:
+    type: string
+    description: Name of image to use for servers
+    default: ubuntu-14.04-amd64
+  medium:
+    type: string
+    description: Flavor to use
+    default: m1.small
+  large:
+    type: string
+    description: Flavor to use
+    default: m1.medium
+  public_net:
+    type: string
+    description: >
+    default: public
+  public_network_id:
+    type: string
+    description: >
+    default: 86139c23-b2e3-428d-8a9a-7eb56b5085a1
+  private_net_name:
+    type: string
+    description: Name of private network to be created
+    default: test-neutron-priv
+  private_net_cidr:
+    type: string
+    description: Private network address (CIDR notation)
+    default: 192.168.101.0/24
+  private_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: 192.168.101.1
+  private_net_pool_start:
+    type: string
+    description: Start of private network IP address allocation pool
+    default: 192.168.101.2
+  private_net_pool_end:
+    type: string
+    description: End of private network IP address allocation pool
+    default: 192.168.101.10
+
+resources:
+  private_net:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: private_net_name }
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private_net }
+      cidr: { get_param: private_net_cidr }
+      gateway_ip: { get_param: private_net_gateway }
+      allocation_pools:
+        - start: { get_param: private_net_pool_start }
+          end: { get_param: private_net_pool_end }
+
+  secgroup1:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: LB-BE
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: icmp
+
+  secgroup2:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: Frontend
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          direction: ingress
+          protocol: icmp
+
+  ext_lb:
+    type: OS::Nova::Server
+    properties:
+      name: NGINX
+      image: { get_param: image }
+      flavor: { get_param: medium }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup1 }]
+      networks:
+        - network: {get_resource: private_net }
+
+  lms:
+    type: OS::Heat::ResourceGroup
+    depends_on: [private_subnet,secgroup2]
+    properties:
+       count: 3
+       resource_def:
+          type: OS::Nova::Server
+          properties:
+            name: LMS
+            image: { get_param: image }
+            flavor: { get_param: large }
+            key_name: { get_param: key_name }
+            security_groups: [{ get_resource: secgroup2 }]
+            networks:
+              - network: {get_resource: private_net }
+
+  cms:
+    type: OS::Heat::ResourceGroup
+    depends_on: [private_subnet,secgroup2]
+    properties:
+       count: 3
+       resource_def:
+          type: OS::Nova::Server
+          properties:
+            name: CMS    
+            image: { get_param: image }
+            flavor: { get_param: large }
+            key_name: { get_param: key_name }
+            security_groups: [{ get_resource: secgroup2 }]
+            networks:
+              - network: {get_resource: private_net }
+
+  workers:
+    type: OS::Nova::Server
+    properties:
+      name: Workers
+      image: { get_param: image }
+      flavor: { get_param: large }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup2 }]
+      networks:
+        - network: {get_resource: private_net }
+
+  forums:
+    type: OS::Nova::Server
+    properties:
+      name: Forums
+      image: { get_param: image }
+      flavor: { get_param: medium }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup2 }]
+      networks:
+        - network: {get_resource: private_net }
+
+  xq-ora:
+    type: OS::Nova::Server
+    properties:
+      name: Xqueue-ORA
+      image: { get_param: image }
+      flavor: { get_param: medium }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_resource: secgroup2 }]
+      networks:
+        - network: {get_resource: private_net }
+

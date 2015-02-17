@@ -1,0 +1,59 @@
+heat_template_version: 2013-05-23
+description: >
+  HOT template to create mysql servers with volumes for EDX
+
+parameters:
+  name:
+    type: string
+    description: Name of this resource group
+    default: Galera
+  key_name:
+    type: string
+    description: Name of keypair to assign to servers
+    default: edx
+  image:
+    type: string
+    description: Name of image to use for servers
+    default: ubuntu-14.04-amd64
+  flavor:
+    type: string
+    description: Flavor to use
+    default: m1.small
+  security_group1:
+    type: string
+    description: security group which needs to be used
+  security_group2:
+    type: string
+    description: security group which needs to be used
+  network:
+    type: string
+    description: >
+  volume_size:
+    type: string
+    description: required size for volume
+    default: 1
+
+resources:
+  mysql_server:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+      security_groups: [{ get_param: security_group1 }, { get_param: security_group2 }]
+      networks:
+        - network: { get_param: network }
+
+  volume0:
+    type: OS::Cinder::Volume
+    properties:
+      name: Galera-volume1
+      size: { get_param: volume_size }
+      description: Volume for stack
+
+  volume0_attachment:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      volume_id: { get_resource: volume0 }
+      instance_uuid: { get_resource: mysql_server}

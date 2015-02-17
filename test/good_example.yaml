@@ -1,0 +1,110 @@
+description: Generated template
+heat_template_version: 2013-05-23
+parameters:
+  external_network_for_floating_ip_0:
+    constraints:
+    - custom_constraint: neutron.network
+    description: Network to allocate floating IP from
+    type: string
+  flavor_server_0:
+    default: m1.small
+    description: Flavor to use for instance my_instance
+    type: string
+  image_server_0:
+    description: Image to use to boot instance my_instance
+    type: string
+  router_0_external_network:
+    constraints:
+    - custom_constraint: neutron.network
+    description: Router external network
+    type: string
+resources:
+  floatingip_0:
+    properties:
+      floating_network_id:
+        get_param: external_network_for_floating_ip_0
+    type: OS::Neutron::FloatingIP
+  key_0:
+    properties:
+      name: arezmerita
+      public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC8u8FIZjmhO+hM/f+2J9qYKgJPG16pQmBfQeUvFlC5u9xxf57eGKuq7xYMIoW63gGM8dnsXcQp9Lmp/+TacwPkis5Q8LKriJSxZUgwczM2ppwwJ/SOraRDHy+2bgbrrO2ZYNdoD5zBaiC5jh6YemrB+y5TtkiEo+llNZw+6e5TlZxEEGD4Zgid/Tfz4qwkKvoGwx34ltQ+XvT2Tv6kE7JWc8rR37wkCbLVQd3G3vAJFI3bWrYan3XNP5+wsVydWn3APF2l8FtLkSpE5Fkai7OWACPRZ9zNlQSBk6pRNlxfZ8jQL6Kuk3MU2tTrqw5g/jG7Hlu3vCeDIYOiFI2a8GUX
+    type: OS::Nova::KeyPair
+  network_0:
+    properties:
+      admin_state_up: true
+      name: network
+      shared: false
+    type: OS::Neutron::Net
+  network_subnet_0:
+    properties:
+      allocation_pools:
+      - end: 10.0.48.254
+        start: 10.0.48.242
+      cidr: 10.0.48.240/28
+      dns_nameservers: []
+      enable_dhcp: true
+      host_routes: []
+      ip_version: 4
+      name: network_subnet
+      network_id:
+        get_resource: network_0
+    type: OS::Neutron::Subnet
+  newdefault_0:
+    properties:
+      description: default
+      name: newdefault
+      rules:
+      - direction: egress
+        ethertype: IPv6
+      - direction: ingress
+        ethertype: IPv6
+        remote_mode: remote_group_id
+      - direction: ingress
+        ethertype: IPv4
+        port_range_max: 22
+        port_range_min: 22
+        protocol: tcp
+        remote_ip_prefix: 0.0.0.0/0
+      - direction: egress
+        ethertype: IPv4
+      - direction: ingress
+        ethertype: IPv4
+        remote_mode: remote_group_id
+    type: OS::Neutron::SecurityGroup
+  router_0:
+    properties:
+      admin_state_up: true
+      name: router
+    type: OS::Neutron::Router
+  router_0_gateway:
+    properties:
+      network_id:
+        get_param: router_0_external_network
+      router_id:
+        get_resource: router_0
+    type: OS::Neutron::RouterGateway
+  router_0_interface_0:
+    properties:
+      router_id:
+        get_resource: router_0
+      subnet_id:
+        get_resource: network_subnet_0
+    type: OS::Neutron::RouterInterface
+  server_0:
+    properties:
+      block_device_mapping: []
+      config_drive: ''
+      diskConfig: AUTO
+      flavor:
+        get_param: flavor_server_0
+      image:
+        get_param: image_server_0
+      key_name:
+        get_resource: key_0
+      name: my_instance
+      networks:
+      - network:
+          get_resource: network_0
+      security_groups:
+      - get_resource: newdefault_0
+    type: OS::Nova::Server
